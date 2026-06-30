@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf } from 'obsidian';
+import { ItemView, TFile, WorkspaceLeaf } from 'obsidian';
 import { AnalyticsStore } from '../store/AnalyticsStore';
 import {
 	DashboardState,
@@ -9,11 +9,11 @@ import {
 export const ANALYTICS_VIEW_TYPE = 'note-radar-dashboard';
 
 const COLUMN_LABELS: Record<SortColumn, string> = {
-	name: 'Note Name',
+	name: 'Note',
 	viewCount: 'Views',
-	firstViewedAt: 'First Viewed',
-	lastViewedAt: 'Last Viewed',
-	timeSinceLastView: 'Time Since Last View',
+	firstViewedAt: 'First viewed',
+	lastViewedAt: 'Last viewed',
+	timeSinceLastView: 'Last opened',
 };
 
 export class AnalyticsView extends ItemView {
@@ -38,7 +38,7 @@ export class AnalyticsView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return 'Note Radar dashboard';
+		return 'Note radar dashboard';
 	}
 
 	getIcon(): string {
@@ -75,8 +75,12 @@ export class AnalyticsView extends ItemView {
 
 		const titleRow = header.createDiv({ cls: 'na-header-title-row' });
 		titleRow.createEl('h2', {
-			text: '📊 Note Radar dashboard',
+			text: 'Note radar',
 			cls: 'na-title',
+		});
+		titleRow.createDiv({
+			text: 'Vault activity',
+			cls: 'na-eyebrow',
 		});
 	}
 
@@ -90,37 +94,53 @@ export class AnalyticsView extends ItemView {
 
 		let mostViewed = '—';
 		let mostViewedCount = 0;
+		let mostViewedPath = '';
 		for (const note of allNotes) {
 			if (note.viewCount > mostViewedCount) {
 				mostViewedCount = note.viewCount;
 				mostViewed = this.store.getNoteName(note.filePath);
+				mostViewedPath = note.filePath;
 			}
 		}
 
-		this.createSummaryCard(cards, '📝', 'Notes in Vault', `${totalNotesInVault}`, `${totalViewedNotes} viewed`);
-		this.createSummaryCard(cards, '👁️', 'Total Views', `${totalViews}`);
+		this.createSummaryCard(cards, 'Notes in vault', `${totalNotesInVault}`, `${totalViewedNotes} viewed`);
+		this.createSummaryCard(cards, 'Total views', `${totalViews}`);
 		this.createSummaryCard(
 			cards,
-			'🏆',
-			'Most Viewed Note',
+			'Most viewed note',
 			mostViewed,
 			mostViewedCount > 0 ? `${mostViewedCount} views` : undefined,
+			mostViewedPath,
 		);
 	}
 
 	private createSummaryCard(
 		parent: HTMLElement,
-		icon: string,
 		label: string,
 		value: string,
 		subtitle?: string,
+		filePath?: string,
 	): void {
 		const card = parent.createDiv({ cls: 'na-summary-card' });
-		card.createDiv({ cls: 'na-card-icon', text: icon });
 		card.createDiv({ cls: 'na-card-label', text: label });
 		card.createDiv({ cls: 'na-card-value', text: value });
 		if (subtitle) {
 			card.createDiv({ cls: 'na-card-subtitle', text: subtitle });
+		}
+		if (filePath) {
+			card.addClass('na-clickable-card');
+			card.setAttr('role', 'button');
+			card.setAttr('tabindex', '0');
+			card.setAttr('aria-label', `Open ${value}`);
+			card.addEventListener('click', () => {
+				void this.openNote(filePath);
+			});
+			card.addEventListener('keydown', (event) => {
+				if (event.key === 'Enter' || event.key === ' ') {
+					event.preventDefault();
+					void this.openNote(filePath);
+				}
+			});
 		}
 	}
 
@@ -128,7 +148,7 @@ export class AnalyticsView extends ItemView {
 		const searchBar = container.createDiv({ cls: 'na-search-bar' });
 		const input = searchBar.createEl('input', {
 			type: 'text',
-			placeholder: '🔍 Search notes...',
+			placeholder: 'Search notes',
 			cls: 'na-search-input',
 			value: this.state.searchQuery,
 		});
@@ -215,7 +235,6 @@ export class AnalyticsView extends ItemView {
 				attr: { colspan: '5' },
 				cls: 'na-empty-cell',
 			});
-			emptyCell.createDiv({ cls: 'na-empty-icon', text: '📭' });
 			emptyCell.createDiv({
 				cls: 'na-empty-text',
 				text: this.state.searchQuery
@@ -252,7 +271,7 @@ export class AnalyticsView extends ItemView {
 		if (totalPages <= 1) return;
 
 		const prevBtn = this.paginationContainer.createEl('button', {
-			text: '◀ Prev',
+			text: 'Previous',
 			cls: `na-pagination-btn ${this.state.currentPage === 1 ? 'na-disabled' : ''}`,
 			attr: this.state.currentPage === 1 ? { disabled: 'true' } : {}
 		});
@@ -269,7 +288,7 @@ export class AnalyticsView extends ItemView {
 		});
 
 		const nextBtn = this.paginationContainer.createEl('button', {
-			text: 'Next ▶',
+			text: 'Next',
 			cls: `na-pagination-btn ${this.state.currentPage === totalPages ? 'na-disabled' : ''}`,
 			attr: this.state.currentPage === totalPages ? { disabled: 'true' } : {}
 		});
@@ -286,6 +305,18 @@ export class AnalyticsView extends ItemView {
 		const row = tbody.createEl('tr', {
 			cls: `na-row ${isNeverViewed ? 'na-row-never-viewed' : ''}`,
 		});
+		row.addClass('na-clickable-row');
+		row.setAttr('tabindex', '0');
+		row.setAttr('aria-label', `Open ${this.store.getNoteName(note.filePath)}`);
+		row.addEventListener('click', () => {
+			void this.openNote(note.filePath);
+		});
+		row.addEventListener('keydown', (event) => {
+			if (event.key === 'Enter' || event.key === ' ') {
+				event.preventDefault();
+				void this.openNote(note.filePath);
+			}
+		});
 
 		const nameCell = row.createEl('td', { cls: 'na-cell na-cell-name' });
 		const nameLink = nameCell.createEl('a', {
@@ -295,10 +326,8 @@ export class AnalyticsView extends ItemView {
 		});
 		nameLink.addEventListener('click', (e) => {
 			e.preventDefault();
-			const file = this.app.vault.getAbstractFileByPath(note.filePath);
-			if (file) {
-				void this.app.workspace.openLinkText(note.filePath, '', false);
-			}
+			e.stopPropagation();
+			void this.openNote(note.filePath);
 		});
 
 		const viewCell = row.createEl('td', { cls: 'na-cell na-cell-viewcount' });
@@ -332,5 +361,12 @@ export class AnalyticsView extends ItemView {
 			cls: 'na-cell na-cell-elapsed',
 			text: this.store.getTimeSinceLastView(note.lastViewedAt),
 		});
+	}
+
+	private async openNote(filePath: string): Promise<void> {
+		const file = this.app.vault.getAbstractFileByPath(filePath);
+		if (file instanceof TFile) {
+			await this.app.workspace.openLinkText(filePath, '', false);
+		}
 	}
 }

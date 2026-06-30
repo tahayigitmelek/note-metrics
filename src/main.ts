@@ -15,7 +15,7 @@ export default class NoteAnalyticsPlugin extends Plugin {
 
 		this.addRibbonIcon(
 			'bar-chart-2',
-			'Note Radar dashboard',
+			'Note radar dashboard',
 			async (_evt: MouseEvent) => {
 				await this.activateDashboard();
 			},
@@ -81,19 +81,24 @@ export default class NoteAnalyticsPlugin extends Plugin {
 	async activateDashboard(): Promise<void> {
 		const { workspace } = this.app;
 
-		let leaf: WorkspaceLeaf | null = null;
 		const existingLeaves = workspace.getLeavesOfType(ANALYTICS_VIEW_TYPE);
+		let leaf: WorkspaceLeaf | null =
+			existingLeaves.find(
+				(existingLeaf) => existingLeaf.getRoot() === workspace.rootSplit,
+			) ?? null;
 
-		if (existingLeaves.length > 0) {
-			leaf = existingLeaves[0] ?? null;
-		} else {
-			leaf = workspace.getRightLeaf(false);
-			if (leaf) {
-				await leaf.setViewState({
-					type: ANALYTICS_VIEW_TYPE,
-					active: true,
-				});
+		for (const existingLeaf of existingLeaves) {
+			if (existingLeaf !== leaf && existingLeaf.getRoot() !== workspace.rootSplit) {
+				existingLeaf.detach();
 			}
+		}
+
+		if (!leaf) {
+			leaf = workspace.getLeaf('tab');
+			await leaf.setViewState({
+				type: ANALYTICS_VIEW_TYPE,
+				active: true,
+			});
 		}
 
 		if (leaf) {
